@@ -4,11 +4,15 @@
   This is a naive implement of heat propagation equation.
   Version 0.1 (date: 10/30/2023)
 */
+# include "mpi.h"
 # include <stdlib.h>
 # include <stdio.h>
 # include <math.h>
 # include <omp.h>
 # include <time.h>
+# include <cstring>
+
+#define ROOT 0
 
 const int M = 6000;
 const int N = 8000;
@@ -49,29 +53,44 @@ int main (int argc, char *argv[]) {
     double odt[M][N];
     double t[M][N];
     double mean = 0.0;
+    double t0, t1;
     int iterations = 0;
     int iterations_print = 1;
-    double diff = epsilon;
-    clock_t time0, time1;
-    double duration;
+    double diff = epsilon, my_diff_reduce;
+    int size, rank;
+    int size_sqrt;
     
-    // init    
+    MPI_Init(&argc, &argv); 
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    // init   
     init_data(t);
     init_mean(t, mean);
     init_interior(t, mean);
-    
+
     // solve    
-    time0 = clock();
+    t0 = MPI_Wtime();
+
+    size_sqrt = sqrt(size);
+
+    for (int i = 0; i < M; i++ ) {
+        for (int j = 0; j < N; j++ ) {
+            odt[i][j] = t[i][j];
+        }
+    }
 
     while(epsilon <= diff) {
 
-        for (int i = 0; i < M; i++ ) {
-            for (int j = 0; j < N; j++ ) {
-                odt[i][j] = t[i][j];
-            }
-        }
-        for (int i = 1; i < M - 1; i++ ) {
-            for (int j = 1; j < N - 1; j++ ) {
+        memset(t, 0, sizeof(t));
+        
+        for (int i = M / size_sqrt * (rank / size_sqrt); i < M / size_sqrt * (rank / size_sqrt + 1); i++ ) {
+            for (int j = N / size_sqrt * (rank % size_sqrt); j < N / size_sqrt * (rank % size_sqrt + 1); j++ ) {
+                if (i == M-1 || (i != 0 && (j == 0 || j == N-1))){
+                    t[i][j] = 100.0;
+                    continue;
+                }
+		        if (i == 0) continue;
                 t[i][j] = ( odt[i-1][j] + odt[i+1][j] + odt[i][j-1] + odt[i][j+1] ) / 4.0;
             }
         }
@@ -79,30 +98,41 @@ int main (int argc, char *argv[]) {
         double my_diff = 0.0;
         diff = 0.0;
 
-        for (int i = 1; i < M - 1; i++ ) {
-            for (int j = 1; j < N - 1; j++ ) {
+        for (int i = M / size_sqrt * (rank / size_sqrt); i < M / size_sqrt * (rank / size_sqrt + 1); i++ ) {
+            for (int j = N / size_sqrt * (rank % size_sqrt); j < N / size_sqrt * (rank % size_sqrt + 1); j++ ) {
+                if (i == 0 || i == M-1 || j == 0 || j == N-1) continue;
                 if ( my_diff < fabs ( t[i][j] - odt[i][j] ) ) {
                     my_diff = fabs ( t[i][j] - odt[i][j] );
                 }
             }
         }
 
-        if ( diff < my_diff ) {
-            diff = my_diff;
-        }
+    	MPI_Allreduce(t, odt, M*N, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        MPI_Allreduce(&my_diff, &my_diff_reduce, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+
+	    if (diff < my_diff_reduce) {
+	        diff = my_diff_reduce;
+	    }
 
         // print
-        iterations++;
-        if ( iterations == iterations_print ) {
-            printf ( "  %8d  %f\n", iterations, diff);
-            iterations_print = 2 * iterations_print;
+        if (rank == ROOT){
+            iterations++;
+            if (iterations == iterations_print ) {
+                printf ( "  %8d  %f\n", iterations, diff);
+                iterations_print = 2 * iterations_print;
+            }
         }
     }
-    duration = (double)(clock()- time0) / CLOCKS_PER_SEC;
-    printf ( "\n" );
-    printf ( "  %8d  %f\n", iterations, diff );
-    printf ( "\n" );
-    printf ( "  Error tolerance achieved.\n" );
-    printf ( "  Wallclock time = %f\n", duration );
+    t1 = MPI_Wtime();
+    if (rank == ROOT){
+        printf ( "\n" );
+        printf ( "  %8d  %f\n", iterations, diff );
+        printf ( "\n" );
+        printf ( "  Error tolerance achieved.\n" );
+        printf ( "  Wallclock time = %f\n", t1-t0 );
+    }
+
+    MPI_Finalize();
+    
     return 0;
 }
