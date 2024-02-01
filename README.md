@@ -1,4 +1,4 @@
-// load mpi
+**// load mpi**
 module add mpich
 
 // for c
