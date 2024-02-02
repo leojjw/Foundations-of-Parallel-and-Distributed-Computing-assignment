@@ -1,5 +1,8 @@
 #ifndef _SPMV_
 #define _SPMV_
+
+void gpu_SpMV<double>(double** A, double* V, double* result, unsigned int M, unsigned int Xnode);
+
 template <class T>
 void SpMV(T** A, T* V, T* result, unsigned int M, unsigned int Xnode) {
     for (int i = 1; i < M; i++) {

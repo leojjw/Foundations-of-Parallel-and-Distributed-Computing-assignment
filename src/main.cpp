@@ -1,4 +1,3 @@
-#include <mpi.h>
 #include <omp.h>
 #include <Setting.hpp>
 #include <iostream>

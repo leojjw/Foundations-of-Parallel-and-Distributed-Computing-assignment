@@ -2,6 +2,12 @@
 #define _VECTOROPERATOR_
 #include <utility>
 
+double gpu_VectorDotVector(double* a, double* b, unsigned int L);
+double gpu_VectorNorm(double* a, unsigned int L);
+
+double gpu_VectorDotVector_optimized(double* a, double* b, unsigned int L);
+double gpu_VectorNorm_optimized(double* a, unsigned int L);
+
 template <class Type, class OP, class... VEC>
 void VectorOperation(OP op, unsigned L, Type result, VEC... vec) {
     for (int i = 0; i < L; i++)
